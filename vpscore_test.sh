@@ -2,7 +2,7 @@
 
 echo "Must be care that not to use network proxy to avoid abnormal!"
 
-[ "$1" = "-h"] && {
+[ "$1" = "-h" ] && {
 	echo './vpscore_test.sh [-h|-y|-n] <remote>
     -h          display this help
     -y          test all
@@ -87,7 +87,7 @@ function deal_unit ()
 echo "--------------------- Linux VPS simple benchmark ---------------------"
 
 # 测试单核CPU性能，处理数据越多性能越强
-single_cpu=$($logmyserver openssl speed -bytes 16384 md5 | grep "^md5")
+single_cpu=$($logmyserver openssl speed -bytes 16384 -seconds 3 md5 2>/dev/null | grep "^md5")
 echo "Single CPU: $single_cpu"
 single_cpu=$(echo "$single_cpu" | awk '{print $2}' | deal_unit)
 

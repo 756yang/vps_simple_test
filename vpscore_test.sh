@@ -171,12 +171,14 @@ ping_loss=$(echo "$ping_delay" | grep loss | awk -F , '{print $3+0}')
 ping_delay=$(echo "$ping_delay" | grep rtt | awk -F / '{print $5}')
 
 
+echo "----------------------------------------------------------------------"
 
 # 开始进行评分计算
 # single_cpu, multi_cpu, speed_mem, disk_write, disk_read, ping_delay, ping_loss
 
 # 计算CPU评分的贡献值
 cpu_score=$(awk -v m=$[834*1024*1024] -v k=3 -v sc=$single_cpu -v mc=$multi_cpu 'BEGIN{printf("%f\n",mc*exp(log(sc/m)/k));exit}')
+echo "CPU scores: $cpu_score"
 
 # 计算内存评分的贡献值
 mem_score=$(awk -v m=$[108*1024*1024] -v k=2 -v cpu=$cpu_score -v mem=$speed_mem 'BEGIN{
@@ -185,6 +187,7 @@ mem_score=$(awk -v m=$[108*1024*1024] -v k=2 -v cpu=$cpu_score -v mem=$speed_mem
 	else score=2-exp(k*log(m/mem));
 	printf("%f\n",score);
 exit}')
+echo "MEM scores: $mem_score"
 
 # 计算磁盘评分的贡献值
 disk_score=$(awk -v dread=$disk_read -v dwrite=$disk_write 'BEGIN{printf("%f\n",2*dread+dwrite);exit}')
@@ -193,6 +196,7 @@ disk_score=$(awk -v m=$[300*1024*1024] -v k=2 -v score=$disk_score 'BEGIN{
 	else score=2-exp(k*log(m/score));
 	printf("%f\n",score);
 exit}')
+echo "DISK scores:$disk_score"
 
 # 计算网络评分的贡献值
 ping_delay=$(awk -v rtt=$ping_delay -v loss=$ping_loss 'BEGIN{printf("%f\n",rtt*(5/(1-loss/100)-4));exit}')
@@ -202,6 +206,7 @@ net_score=$(awk -v m=100 -v k=1 -v rtt=$ping_delay 'BEGIN{
 	else score=exp((x-m)/m*log(m/rtt));
 	printf("%f\n",score);
 exit}')
+echo "NET scores: $net_score"
 
 # 输出总评分
 echo "----------------------------------------------------------------------"
@@ -209,7 +214,7 @@ echo -n "You remote machine scores is: "
 awk -v cpu=$cpu_score -v mem=$mem_score -v disk=$disk_score -v net=$net_score 'BEGIN{print cpu*mem*disk*net;exit}'
 
 
-read -p "Backtrace route test will download executable from Internet!
+read -p "Backtrace route test will clear screen and download from Internet!
 Do you need to perform this test? (N|y) " ans
 if [ "$ans" = y -o "$ans" = Y ]; then
 	# 获取本地公网IP

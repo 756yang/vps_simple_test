@@ -14,20 +14,25 @@ answer=
 [ "$1" = "-n" -o "$1" = "-N" ] && answer=n
 ans=$answer
 
-if [ -n "$2" ]; then
+if [ "$2" = "-local" ]; then
+	mysshport=22
+	myserver=127.0.0.1
+	username=$USER
+	logmyserver="bash -c"
+elif [ -n "$2" ]; then
 	mysshport=${2##*:}
 	myserver=${2%:*}
 	username=${myserver%%@*}
 	myserver=${myserver#*@}
+	logmyserver="ssh $username@$myserver -p $mysshport"
 fi
 [ -z "$username" -o -z "$myserver" -o -z "$mysshport" ] && {
 	read -p "please input you server address:port ? " myserver
 	read -p "please input you server username? " username
 	mysshport=${myserver##*:}
 	myserver=${myserver%:*}
+	logmyserver="ssh $username@$myserver -p $mysshport"
 }
-logmyserver="ssh $username@$myserver -p $mysshport"
-
 checkcmd_install='
 	while [ $# -gt 0 ]; do
 		if ! which $1 >/dev/null 2>&1; then
@@ -87,17 +92,17 @@ function deal_unit ()
 echo "--------------------- Linux VPS simple benchmark ---------------------"
 
 # 测试单核CPU性能，处理数据越多性能越强
-single_cpu=$($logmyserver openssl speed -bytes 16384 -seconds 3 md5 2>/dev/null | grep "^md5")
-echo "Single CPU: $single_cpu"
+single_cpu=$($logmyserver "openssl speed -bytes 16384 -seconds 3 md5" 2>/dev/null | grep "^md5")
 single_cpu=$(echo "$single_cpu" | awk '{print $2}' | deal_unit)
+echo "Single CPU:   md5   $(numfmt --to=iec --format=%.4f $single_cpu)/s"
 
 # 测试多核CPU性能，数字越大性能越强
 IFS='' read -r -d '' SSH_COMMAND <<'EOT'
 (threads=$(cat /proc/cpuinfo | grep "processor"| wc -l)
 for((i=0;i<$threads;i++)); do
-	time -p (echo "scale=5000; 4*a(1)" | bc -l >/dev/null) 2>> calc_pi &
+	time -p (echo "scale=5000; 4*a(1)" | bc -l >/dev/null) 2>> test.dd &
 done;wait)
-cat calc_pi | grep real | awk '{a+=1/$2}END{printf("%f\n",a*100)}' && rm calc_pi
+cat test.dd | grep real | awk '{a+=1/$2}END{printf("%f\n",a*100)}' && rm test.dd
 EOT
 multi_cpu=$($logmyserver "$SSH_COMMAND")
 echo "Multiple CPU: bc_pi $multi_cpu"
@@ -131,10 +136,21 @@ EOT
 	$logmyserver -t "$SSH_COMMAND"
 fi
 
-# 测试内存读写性能，真实读或写性能是此数值的两倍多点
-speed_mem=$($logmyserver dd if=/dev/zero of=/dev/zero bs=128M count=500 2>&1 | grep copied)
-echo "Speed MEM: $speed_mem"
-speed_mem=$(echo "$speed_mem" | awk '{print $(NF-1) $NF}' | deal_unit)
+# 测试单核MEM性能，真实读或写性能是此数值的两倍多点
+single_mem=$($logmyserver "dd if=/dev/zero of=/dev/zero bs=128M count=500" 2>&1 | grep copied)
+single_mem=$(echo "$single_mem" | awk '{print $(NF-1) $NF}' | deal_unit)
+echo "Single MEM:   dd    $(numfmt --to=iec --format=%.4f $single_mem)/s"
+
+# 测试多核MEM性能，数字越大性能越强
+IFS='' read -r -d '' SSH_COMMAND <<'EOT'
+(threads=$(cat /proc/cpuinfo | grep "processor"| wc -l)
+for((i=0;i<$threads;i++)); do
+	(dd if=/dev/zero of=/dev/zero bs=128M count=500 2>&1 | grep copied) >> test.dd &
+done;wait)
+cat test.dd | awk '{print $(NF-1) toupper(substr($NF,1,1))}' | numfmt --from=iec | awk '{s+=$1}END{printf("%f\n",s)}' && rm test.dd
+EOT
+multi_mem=$($logmyserver "$SSH_COMMAND")
+echo "Multiple MEM: dd    $(numfmt --to=iec --format=%.4f $multi_mem)/s"
 
 
 # 测试CPU、内存、管道，综合性能
@@ -143,13 +159,13 @@ $logmyserver "dd if=/dev/zero bs=128M count=100 | md5sum" 2>&1 | grep copied
 
 
 # 测试硬盘连续写入性能
-disk_write=$($logmyserver dd if=/dev/zero of=test.dd bs=1M count=2048 conv=fdatasync 2>&1 | grep copied)
-echo "Disk write: $disk_write"
+disk_write=$($logmyserver "dd if=/dev/zero of=test.dd bs=1M count=2048 conv=fdatasync" 2>&1 | grep copied)
 disk_write=$(echo "$disk_write" | awk '{print $(NF-1) $NF}' | deal_unit)
+echo "Disk write:   dd    $(numfmt --to=iec --format=%.4f $disk_write)/s"
 # 测试硬盘连续读取性能
 disk_read=$($logmyserver "dd if=test.dd of=/dev/zero bs=1M count=2048 iflag=direct && rm test.dd" 2>&1 | grep copied)
-echo "Disk read: $disk_read"
 disk_read=$(echo "$disk_read" | awk '{print $(NF-1) $NF}' | deal_unit)
+echo "Disk read:    dd    $(numfmt --to=iec --format=%.4f $disk_read)/s"
 
 
 # 测试服务器延迟和丢包率，$myserver是目的地公网IP地址
@@ -212,14 +228,14 @@ fi
 echo "----------------------------------------------------------------------"
 
 # 开始进行评分计算
-# single_cpu, multi_cpu, speed_mem, disk_write, disk_read, ping_delay, ping_loss
+# single_cpu, multi_cpu, multi_mem, disk_write, disk_read, ping_delay, ping_loss
 
 # 计算CPU评分的贡献值
 cpu_score=$(awk -v m=$[834*1024*1024] -v k=3 -v sc=$single_cpu -v mc=$multi_cpu 'BEGIN{printf("%f\n",mc*exp(log(sc/m)/k));exit}')
 echo "CPU scores: $cpu_score"
 
 # 计算内存评分的贡献值
-mem_score=$(awk -v m=$[108*1024*1024] -v k=2 -v cpu=$cpu_score -v mem=$speed_mem 'BEGIN{
+mem_score=$(awk -v m=$[256*1024*1024] -v k=1 -v cpu=$cpu_score -v mem=$multi_mem 'BEGIN{
 	m*=cpu;
 	if(mem<=m)score=exp(k*log(mem/m));
 	else score=2-exp(k*log(m/mem));

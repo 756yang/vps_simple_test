@@ -1,10 +1,31 @@
 #!/bin/bash
 
 echo "Must be care that not to use network proxy to avoid abnormal!"
-read -p "please input you server address:port ? " myserver
-read -p "please input you server username? " username
-mysshport=${myserver##*:}
-myserver=${myserver%:*}
+
+[ "$1" = "-h"] && {
+	echo './vpscore_test.sh [-h|-y|-n] <remote>
+    -h          display this help
+    -y          test all
+    -n          not tess MEM_EAT and Backtrace
+    <remote>    the remote server link, format is: user@addr:port'
+}
+answer=
+[ "$1" = "-y" -o "$1" = "-Y" ] && answer=y
+[ "$1" = "-n" -o "$1" = "-N" ] && answer=n
+ans=$answer
+
+if [ -n "$2" ]; then
+	mysshport=${2##*:}
+	myserver=${2%:*}
+	username=${myserver%%@*}
+	myserver=${myserver#*@}
+fi
+[ -z "$username" -o -z "$myserver" -o -z "$mysshport" ] && {
+	read -p "please input you server address:port ? " myserver
+	read -p "please input you server username? " username
+	mysshport=${myserver##*:}
+	myserver=${myserver%:*}
+}
 logmyserver="ssh $username@$myserver -p $mysshport"
 
 checkcmd_install='
@@ -81,9 +102,10 @@ EOT
 multi_cpu=$($logmyserver "$SSH_COMMAND")
 echo "Multiple CPU: bc_pi $multi_cpu"
 
-
-read -p "MEM_EAT must test on the new machine to avoid anomalies!
-Do you need to perform this test? (N|y) " ans
+[ -z "$answer" ] && {
+	read -p "MEM_EAT must test on the new machine to avoid anomalies!
+	Do you need to perform this test? (N|y) " ans
+}
 if [ "$ans" = y -o "$ans" = Y ]; then
 	# 测试能够获取到多少真实内存，请在初始系统下测试
 	IFS='' read -r -d '' SSH_COMMAND <<'EOT'
@@ -171,6 +193,22 @@ ping_loss=$(echo "$ping_delay" | grep loss | awk -F , '{print $3+0}')
 ping_delay=$(echo "$ping_delay" | grep rtt | awk -F / '{print $5}')
 
 
+[ -z "$answer" ] && {
+	read -p "Backtrace route test will clear screen and download from Internet!
+	Do you need to perform this test? (N|y) " ans
+}
+if [ "$ans" = y -o "$ans" = Y ]; then
+	# 获取本地公网IP
+	#public_ip=$(curl cip.cc 2>/dev/null | grep IP | awk '{print $3}')
+	public_ip=$(curl ifconfig.me)
+	# 三网回程路由测试
+	IFS='' read -r -d '' SSH_COMMAND <<EOT
+bash -c "\$(wget -qO- https://github.com/756yang/besttrace_shell/raw/master/autoBestTrace.sh)" @ $public_ip
+EOT
+	$logmyserver -t "$SSH_COMMAND"
+fi
+
+
 echo "----------------------------------------------------------------------"
 
 # 开始进行评分计算
@@ -212,17 +250,3 @@ echo "NET scores: $net_score"
 echo "----------------------------------------------------------------------"
 echo -n "You remote machine scores is: "
 awk -v cpu=$cpu_score -v mem=$mem_score -v disk=$disk_score -v net=$net_score 'BEGIN{print cpu*mem*disk*net;exit}'
-
-
-read -p "Backtrace route test will clear screen and download from Internet!
-Do you need to perform this test? (N|y) " ans
-if [ "$ans" = y -o "$ans" = Y ]; then
-	# 获取本地公网IP
-	#public_ip=$(curl cip.cc 2>/dev/null | grep IP | awk '{print $3}')
-	public_ip=$(curl ifconfig.me)
-	# 三网回程路由测试
-	IFS='' read -r -d '' SSH_COMMAND <<EOT
-bash -c "\$(wget -qO- https://github.com/756yang/besttrace_shell/raw/master/autoBestTrace.sh)" @ $public_ip
-EOT
-	$logmyserver -t "$SSH_COMMAND"
-fi

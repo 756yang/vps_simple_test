@@ -31,10 +31,10 @@ bash -c "$checkcmd_install" @ curl grep awk
 IFS='' read -r -d '' SSH_COMMAND <<EOT
 function checkcmd_install {$checkcmd_install}
 checkcmd_install grep openssl bc wget
-[ -e test.dd ] && {
+if [ -e test.dd ]; then
 	echo "The test.dd is in your home, please move it!"
 	exit 1
-}
+fi
 EOT
 $logmyserver -t "$SSH_COMMAND"
 [ $? -ne 0 ] && exit 1

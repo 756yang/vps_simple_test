@@ -8,6 +8,7 @@ echo "Must be care that not to use network proxy to avoid abnormal!"
     -y          test all
     -n          not tess MEM_EAT and Backtrace
     <remote>    the remote server link, format is: user@addr:port'
+	exit
 }
 answer=
 [ "$1" = "-y" -o "$1" = "-Y" ] && answer=y

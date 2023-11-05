@@ -236,7 +236,7 @@ cpu_score=$(awk -v m=$[834*1024*1024] -v k=3 -v sc=$single_cpu -v mc=$multi_cpu 
 echo "CPU scores: $cpu_score"
 
 # 计算内存评分的贡献值
-mem_score=$(awk -v m=$[256*1024*1024] -v k=1 -v cpu=$cpu_score -v mem=$multi_mem 'BEGIN{
+mem_score=$(awk -v m=$[256*1024*1024] -v k=0.5 -v cpu=$cpu_score -v mem=$multi_mem 'BEGIN{
 	m*=cpu;
 	if(mem<=m)score=exp(k*log(mem/m));
 	else score=2-exp(k*log(m/mem));

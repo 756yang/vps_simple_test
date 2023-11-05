@@ -3,11 +3,12 @@
 echo "Must be care that not to use network proxy to avoid abnormal!"
 
 [ "$1" = "-h" ] && {
-	echo './vpscore_test.sh [-h|-y|-n] <remote>
+	echo './vpscore_test.sh [-h|-y|-n] <remote> <threads>
     -h          display this help
     -y          test all
     -n          not tess MEM_EAT and Backtrace
-    <remote>    the remote server link, format is: user@addr:port'
+    <remote>    the remote server link, format is: user@addr:port
+    <threads>   number of test threads'
 	exit
 }
 answer=
@@ -34,6 +35,8 @@ fi
 	myserver=${myserver%:*}
 	logmyserver="ssh $username@$myserver -p $mysshport"
 }
+threads=$($logmyserver "cat /proc/cpuinfo | grep processor| wc -l")
+[ -n "$3" ] && expr "$3" + 0 &>/dev/null && threads="$3"
 checkcmd_install='
 	while [ $# -gt 0 ]; do
 		if ! which $1 >/dev/null 2>&1; then
@@ -98,12 +101,11 @@ single_cpu=$(echo "$single_cpu" | awk '{print $2}' | deal_unit)
 echo "Single CPU:   md5   $(numfmt --to=iec --format=%.4f $single_cpu)/s"
 
 # 测试多核CPU性能，数字越大性能越强
-IFS='' read -r -d '' SSH_COMMAND <<'EOT'
-(threads=$(cat /proc/cpuinfo | grep "processor"| wc -l)
-for((i=0;i<$threads;i++)); do
+IFS='' read -r -d '' SSH_COMMAND <<EOT
+(for((i=0;i<$threads;i++)); do
 	time -p (echo "scale=5000; 4*a(1)" | bc -l >/dev/null) 2>> test.dd &
 done;wait)
-cat test.dd | grep real | awk '{a+=1/$2}END{printf("%f\n",a*100)}' && rm test.dd
+cat test.dd | grep real | awk '{a+=1/\$2}END{printf("%f\n",a*100)}' && rm test.dd
 EOT
 multi_cpu=$($logmyserver "$SSH_COMMAND")
 echo "Multiple CPU: bc_pi $multi_cpu"
@@ -143,12 +145,11 @@ single_mem=$(echo "$single_mem" | awk '{print $(NF-1) $NF}' | deal_unit)
 echo "Single MEM:   dd    $(numfmt --to=iec --format=%.4f $single_mem)/s"
 
 # 测试多核MEM性能，数字越大性能越强
-IFS='' read -r -d '' SSH_COMMAND <<'EOT'
-(threads=$(cat /proc/cpuinfo | grep "processor"| wc -l)
-for((i=0;i<$threads;i++)); do
+IFS='' read -r -d '' SSH_COMMAND <<EOT
+(for((i=0;i<$threads;i++)); do
 	(dd if=/dev/zero of=/dev/zero bs=128M count=500 2>&1 | grep copied) >> test.dd &
 done;wait)
-cat test.dd | awk '{print $(NF-1) toupper(substr($NF,1,1))}' | numfmt --from=iec | awk '{s+=$1}END{printf("%f\n",s)}' && rm test.dd
+cat test.dd | awk '{print \$(NF-1) toupper(substr(\$NF,1,1))}' | numfmt --from=iec | awk '{s+=\$1}END{printf("%f\n",s)}' && rm test.dd
 EOT
 multi_mem=$($logmyserver "$SSH_COMMAND")
 echo "Multiple MEM: dd    $(numfmt --to=iec --format=%.4f $multi_mem)/s"

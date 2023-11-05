@@ -29,7 +29,7 @@ bash -c "$checkcmd_install" @ curl grep awk
 # 检查远程服务器需要的软件包
 IFS='' read -r -d '' SSH_COMMAND <<EOT
 function checkcmd_install {$checkcmd_install}
-checkcmd_install openssl bc wget
+checkcmd_install grep openssl bc wget
 EOT
 $logmyserver -t "$SSH_COMMAND"
 [ $? -ne 0 ] && exit 1
@@ -46,7 +46,7 @@ function deal_unit ()
 				if(unit ~ "[Mm]")val*=1024*1024;
 				if(unit ~ "[Gg]")val*=1024*1024*1024;
 			}
-			printf("%lf\n",val);
+			printf("%f\n",val);
 		}
 	}'
 }
@@ -71,7 +71,7 @@ IFS='' read -r -d '' SSH_COMMAND <<'EOT'
 for((i=0;i<$threads;i++)); do
 	time -p (echo "scale=5000; 4*a(1)" | bc -l >/dev/null) 2>> calc_pi &
 done;wait)
-cat calc_pi | grep real | awk 'BEGIN{a=0}{a+=1/$2}END{printf("%lf\n",a*100)}' && rm calc_pi
+cat calc_pi | grep real | awk '{a+=1/$2}END{printf("%f\n",a*100)}' && rm calc_pi
 EOT
 multi_cpu=$($logmyserver "$SSH_COMMAND")
 echo "Multiple CPU: bc_pi $multi_cpu"
@@ -162,7 +162,7 @@ EOT
 }
 ping_delay=$(bash -c "$ping_cmd" @ -c 100 -i 0.01 $myserver | tail -n 3)
 echo "Ping echo: $ping_delay"
-ping_loss=$(echo "$ping_delay" | grep loss | awk -F , '{print $3}')
+ping_loss=$(echo "$ping_delay" | grep loss | awk -F , '{print $3+0}')
 ping_delay=$(echo "$ping_delay" | grep rtt | awk -F / '{print $5}')
 
 
@@ -185,31 +185,31 @@ fi
 # single_cpu, multi_cpu, speed_mem, disk_write, disk_read, ping_delay, ping_loss
 
 # 计算CPU评分的贡献值
-cpu_score=$(awk -v m=$[834*1024*1024] -v k=3 -v sc=$single_cpu -v mc=$multi_cpu 'BEGIN{printf("%lf\n",mc*exp(log(sc/m)/k));exit}')
+cpu_score=$(awk -v m=$[834*1024*1024] -v k=3 -v sc=$single_cpu -v mc=$multi_cpu 'BEGIN{printf("%f\n",mc*exp(log(sc/m)/k));exit}')
 
 # 计算内存评分的贡献值
 mem_score=$(awk -v m=$[108*1024*1024] -v k=2 -v cpu=$cpu_score -v mem=$speed_mem 'BEGIN{
 	m*=cpu;
 	if(mem<=m)score=exp(k*log(mem/m));
 	else score=2-exp(k*log(m/mem));
-	printf("%lf\n",score);
+	printf("%f\n",score);
 exit}')
 
 # 计算磁盘评分的贡献值
-disk_score=$(awk -v dread=$disk_read -v dwrite=$disk_write 'BEGIN{printf("%lf\n",2*dread+dwrite);exit}')
+disk_score=$(awk -v dread=$disk_read -v dwrite=$disk_write 'BEGIN{printf("%f\n",2*dread+dwrite);exit}')
 disk_score=$(awk -v m=$[300*1024*1024] -v k=2 -v score=$disk_score 'BEGIN{
 	if(score<=m)score=exp(k*log(score/m));
 	else score=2-exp(k*log(m/score));
-	printf("%lf\n",score);
+	printf("%f\n",score);
 exit}')
 
 # 计算网络评分的贡献值
-ping_delay=$(awk -v rtt=$ping_delay -v loss=$ping_loss 'BEGIN{printf("%lf\n",rtt*(5/(1-loss/100)-4));exit}')
+ping_delay=$(awk -v rtt=$ping_delay -v loss=$ping_loss 'BEGIN{printf("%f\n",rtt*(5/(1-loss/100)-4));exit}')
 net_score=$(awk -v m=100 -v k=1 -v rtt=$ping_delay 'BEGIN{
 	if(rtt<=m)score=2-exp(k*log(rtt/m));
 	else if(rtt<=2*m)score=exp(k*log(m/rtt));
 	else score=exp((x-m)/m*log(m/rtt));
-	printf("%lf\n",score);
+	printf("%f\n",score);
 exit}')
 
 # 输出总评分
